@@ -77,6 +77,23 @@ def get_streamer_by_login(login: str) -> dict | None:
     return row
 
 
+def search_streamer_logins(query: str, limit: int = 8) -> list[str]:
+    """Prefix-match logins for the public streamer-lookup autocomplete.
+    Twitch logins can contain underscores, so LIKE wildcards (% and _) in the
+    query are escaped to avoid them being interpreted as pattern matches."""
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT login FROM streamers WHERE login LIKE %s ORDER BY login LIMIT %s",
+        (f"{escaped}%", limit),
+    )
+    rows = [r[0] for r in cursor.fetchall()]
+    cursor.close()
+    conn.close()
+    return rows
+
+
 def _ensure_token_columns_are_text():
     """Encrypted tokens are longer than raw ones — widen the columns so they
     aren't silently truncated."""

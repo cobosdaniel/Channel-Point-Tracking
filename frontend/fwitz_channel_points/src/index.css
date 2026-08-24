@@ -285,6 +285,79 @@ a {
   scroll-margin-top: 100px;
 }
 
+.streamer-lookup-wrapper {
+  margin-top: 20px;
+}
+
+.streamer-lookup-form {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.streamer-lookup-field {
+  position: relative;
+  flex: 1 1 240px;
+}
+
+.streamer-lookup-input {
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4ecff;
+  font-size: 15px;
+}
+
+.streamer-lookup-input::placeholder {
+  color: #8b7ea8;
+}
+
+.streamer-lookup-input:focus {
+  outline: none;
+  border-color: #8f62ff;
+}
+
+.streamer-lookup-suggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 14px;
+  background: #1f1f23;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.streamer-lookup-suggestions li + li {
+  margin-top: 2px;
+}
+
+.streamer-lookup-suggestions button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #f4ecff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.streamer-lookup-suggestions button:hover,
+.streamer-lookup-suggestions button.active {
+  background: rgba(139, 123, 255, 0.2);
+}
+
 .hero-eyebrow {
   display: inline-block;
   margin-bottom: 18px;
