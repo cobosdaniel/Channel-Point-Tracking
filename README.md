@@ -9,6 +9,7 @@ A Twitch channel points redemption tracker and analytics dashboard for streamers
 - **Watch Streaks** — tracks consecutive stream attendance per viewer, per reward
 - **Stream Schedule** — configure scheduled streaming days and time windows to control which streams count toward streaks
 - **Twitch OAuth** — login with your Twitch account, no passwords
+- **Public Streamer Pages** — every streamer gets a public page at `/:login` (e.g. `/fwitz`) showing their leaderboard, redemption tracker, and watch streaks — no login required to view. Use the "Look up a streamer" search on the home page, or link directly.
 
 ## Tech Stack
 
@@ -108,3 +109,9 @@ Vite gives `.env.development.local` priority over `.env.development`, and it's g
 | GET | `/api/streak-schedule` | Get streaming schedule |
 | POST | `/api/streak-schedule` | Save streaming schedule |
 | WS | `/ws` | Real-time event stream |
+| GET | `/api/public/streamers?q=` | Public: login autocomplete for the streamer-lookup search (prefix match, min 2 chars) |
+| GET | `/api/public/{login}/status` | Public: whether a streamer is currently live |
+| GET | `/api/public/{login}/points-leaderboard` | Public: viewer leaderboard by total points |
+| GET | `/api/public/{login}/rewards` | Public: list of tracked rewards |
+| GET | `/api/public/{login}/leaderboard` | Public: top viewers for a given reward |
+| GET | `/api/public/{login}/streaks` | Public: watch streak leaderboard |

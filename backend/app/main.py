@@ -18,7 +18,7 @@ from db import (
     refresh_access_token,
     get_streak_reward, save_streak_reward,
     get_point_config, save_point_config, get_points_leaderboard,
-    get_streamer_by_login, get_active_session,
+    get_streamer_by_login, search_streamer_logins, get_active_session,
     get_redeemed_rewards,
     delete_streamer_account, delete_viewer_data,
     get_redemptions_per_stream, count_stream_sessions,
@@ -273,6 +273,17 @@ def resolve_streamer(login: str) -> str:
     if not streamer:
         raise HTTPException(status_code=404, detail="Streamer not found")
     return streamer["twitch_user_id"]
+
+
+@app.get("/api/public/streamers")
+@limiter.limit("60/minute")
+async def public_streamer_search(request: Request, q: str = ""):
+    """Login autocomplete for the public streamer-lookup box. Returns nothing
+    for very short queries so we're not just listing every streamer."""
+    query = q.strip()
+    if len(query) < 2:
+        return []
+    return search_streamer_logins(query)
 
 
 @app.get("/api/public/{login}/points-leaderboard")

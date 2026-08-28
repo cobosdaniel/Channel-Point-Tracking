@@ -1,11 +1,14 @@
-import type { CSSProperties } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   SOCIALS,
   TIP_LINK,
   TWITCH_URL,
   CONTACT_EMAIL,
 } from "../components/socials";
+
+const API_BASE = import.meta.env.VITE_API_URL;
 
 type HomeProps = {
   isAuthenticated: boolean;
@@ -41,6 +44,126 @@ const FEATURES = [
     text: "Redemptions update in real time on the dashboard while we're live.",
   },
 ];
+
+// Debounced autocomplete over /api/public/streamers — typing "fwi" suggests
+// existing logins so viewers don't have to know an exact username up front.
+function StreamerLookupForm() {
+  const navigate = useNavigate();
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const [streamerLogin, setStreamerLogin] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const query = streamerLogin.trim();
+    if (query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`${API_BASE}/api/public/streamers?q=${encodeURIComponent(query)}`, {
+        signal: controller.signal,
+      })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((logins: string[]) => {
+          setSuggestions(logins);
+          setActiveIndex(-1);
+        })
+        .catch((err) => {
+          if (err.name !== "AbortError") console.error(err);
+        });
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [streamerLogin]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const goToStreamer = (login: string) => {
+    const trimmed = login.trim().replace(/^@/, "");
+    if (trimmed) navigate(`/${trimmed}`);
+    setOpen(false);
+  };
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    goToStreamer(activeIndex >= 0 ? suggestions[activeIndex] : streamerLogin);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!open || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  const showSuggestions = open && suggestions.length > 0;
+
+  return (
+    <div className="streamer-lookup-wrapper" ref={wrapperRef}>
+      <form className="streamer-lookup-form" onSubmit={handleSubmit} autoComplete="off">
+        <div className="streamer-lookup-field">
+          <input
+            type="text"
+            className="streamer-lookup-input"
+            placeholder="Twitch username"
+            aria-label="Twitch username"
+            role="combobox"
+            aria-expanded={showSuggestions}
+            aria-autocomplete="list"
+            value={streamerLogin}
+            onChange={(e) => {
+              setStreamerLogin(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={handleKeyDown}
+          />
+          {showSuggestions && (
+            <ul className="streamer-lookup-suggestions" role="listbox">
+              {suggestions.map((login, i) => (
+                <li key={login} role="option" aria-selected={i === activeIndex}>
+                  <button
+                    type="button"
+                    className={i === activeIndex ? "active" : ""}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => goToStreamer(login)}
+                  >
+                    {login}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <button type="submit" className="primary-btn">
+          View Page
+        </button>
+      </form>
+    </div>
+  );
+}
 
 export default function Home({ isAuthenticated }: HomeProps) {
   return (
@@ -121,6 +244,18 @@ export default function Home({ isAuthenticated }: HomeProps) {
             </a>
           </aside>
         </div>
+      </section>
+
+      {/* ── Find a Streamer ─────────────────────────────────── */}
+      <section className="section-card home-section">
+        <span className="section-eyebrow">Explore</span>
+        <h2 className="section-title">Look up a streamer</h2>
+        <p className="section-text">
+          Every streamer using Fwitz Channel Points has a public page with
+          their leaderboard, redemption tracker, and watch streaks. Enter
+          their Twitch username to check it out.
+        </p>
+        <StreamerLookupForm />
       </section>
 
       {/* ── Features ─────────────────────────────────────────── */}
