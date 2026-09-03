@@ -55,6 +55,8 @@ function StreamerLookupForm() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     const query = streamerLogin.trim();
@@ -94,10 +96,25 @@ function StreamerLookupForm() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const goToStreamer = (login: string) => {
+  const goToStreamer = async (login: string) => {
     const trimmed = login.trim().replace(/^@/, "");
-    if (trimmed) navigate(`/${trimmed}`);
     setOpen(false);
+    if (!trimmed) return;
+
+    setChecking(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/public/${encodeURIComponent(trimmed)}/status`);
+      if (res.status === 404) {
+        setError(`No tracker found for "${trimmed}".`);
+        return;
+      }
+      navigate(`/${trimmed}`);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setChecking(false);
+    }
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -136,9 +153,12 @@ function StreamerLookupForm() {
             onChange={(e) => {
               setStreamerLogin(e.target.value);
               setOpen(true);
+              if (error) setError("");
             }}
             onFocus={() => setOpen(true)}
             onKeyDown={handleKeyDown}
+            aria-invalid={!!error}
+            aria-describedby={error ? "streamer-lookup-error" : undefined}
           />
           {showSuggestions && (
             <ul className="streamer-lookup-suggestions" role="listbox">
@@ -157,10 +177,15 @@ function StreamerLookupForm() {
             </ul>
           )}
         </div>
-        <button type="submit" className="primary-btn">
-          View Page
+        <button type="submit" className="primary-btn" disabled={checking}>
+          {checking ? "Checking…" : "View Page"}
         </button>
       </form>
+      {error && (
+        <p id="streamer-lookup-error" className="streamer-lookup-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

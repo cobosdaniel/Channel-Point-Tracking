@@ -319,6 +319,16 @@ a {
   border-color: #8f62ff;
 }
 
+.streamer-lookup-input[aria-invalid="true"] {
+  border-color: #ff6b6b;
+}
+
+.streamer-lookup-error {
+  margin: 10px 0 0;
+  color: #ff8f8f;
+  font-size: 13px;
+}
+
 .streamer-lookup-suggestions {
   position: absolute;
   top: calc(100% + 8px);
