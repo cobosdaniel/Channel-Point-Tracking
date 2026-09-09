@@ -244,34 +244,63 @@ def get_active_session(twitch_user_id):
     return row
 
 
-def get_redemptions_per_stream(twitch_user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
+def get_redemptions_per_stream(
+    twitch_user_id: str, limit: int = 20, offset: int = 0,
+    from_date: str | None = None, to_date: str | None = None,
+) -> list[dict]:
     """Channel point redemption count for a page of the streamer's stream
     sessions, most recent first before reversing — the basis for the
-    redemptions-vs-viewers analytics chart. `offset` pages further back in time."""
+    redemptions-vs-viewers analytics chart. `offset` pages further back in time.
+    `from_date`/`to_date` optionally scope sessions to a date range."""
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
+
+    query  = """
         SELECT ss.id AS session_id, ss.started_at, ss.ended_at,
                COUNT(r.event_id) AS redemption_count
         FROM stream_sessions ss
         LEFT JOIN redemptions r ON r.session_id = ss.id
         WHERE ss.twitch_user_id = %s
-        GROUP BY ss.id, ss.started_at, ss.ended_at
-        ORDER BY ss.started_at DESC
-        LIMIT %s OFFSET %s
-    """, (twitch_user_id, limit, offset))
+    """
+    params: list = [twitch_user_id]
+
+    if from_date:
+        query += " AND ss.started_at >= %s"
+        params.append(from_date)
+    if to_date:
+        query += " AND ss.started_at < DATE_ADD(%s, INTERVAL 1 DAY)"
+        params.append(to_date)
+
+    query += " GROUP BY ss.id, ss.started_at, ss.ended_at ORDER BY ss.started_at DESC LIMIT %s OFFSET %s"
+    params.extend([limit, offset])
+
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
     return list(reversed(rows))
 
 
-def count_stream_sessions(twitch_user_id: str) -> int:
+def count_stream_sessions(
+    twitch_user_id: str, from_date: str | None = None, to_date: str | None = None,
+) -> int:
     """Total stream sessions the streamer has — lets the analytics pager know
-    whether an older page exists."""
+    whether an older page exists. `from_date`/`to_date` optionally scope the count
+    to match the same range applied in get_redemptions_per_stream."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM stream_sessions WHERE twitch_user_id = %s", (twitch_user_id,))
+
+    query  = "SELECT COUNT(*) FROM stream_sessions WHERE twitch_user_id = %s"
+    params: list = [twitch_user_id]
+
+    if from_date:
+        query += " AND started_at >= %s"
+        params.append(from_date)
+    if to_date:
+        query += " AND started_at < DATE_ADD(%s, INTERVAL 1 DAY)"
+        params.append(to_date)
+
+    cursor.execute(query, params)
     count = cursor.fetchone()[0]
     cursor.close()
     conn.close()

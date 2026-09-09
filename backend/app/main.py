@@ -189,11 +189,13 @@ async def redemptions_per_stream_endpoint(
     request: Request,
     limit: int = 20,
     offset: int = 0,
+    from_date: str | None = None,
+    to_date:   str | None = None,
     user_id: str = Depends(get_current_user),
 ):
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
-    rows = get_redemptions_per_stream(user_id, limit=limit, offset=offset)
+    rows = get_redemptions_per_stream(user_id, limit=limit, offset=offset, from_date=from_date, to_date=to_date)
     return {
         "streams": [
             {
@@ -204,7 +206,7 @@ async def redemptions_per_stream_endpoint(
             }
             for r in rows
         ],
-        "total":  count_stream_sessions(user_id),
+        "total":  count_stream_sessions(user_id, from_date=from_date, to_date=to_date),
         "offset": offset,
         "limit":  limit,
     }
