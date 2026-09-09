@@ -463,9 +463,12 @@ function StreamDateRangeHeader({
 
 function RedemptionsPerStreamCard({
   data, loading, offset, total, onOlder, onNewer,
+  from, to, onFromChange, onToChange,
 }: {
   data: StreamRedemptionPoint[]; loading: boolean; offset: number; total: number;
   onOlder: () => void; onNewer: () => void;
+  from: string; to: string;
+  onFromChange: (v: string) => void; onToChange: (v: string) => void;
 }) {
   const [view, setView] = useState<"chart" | "list">("chart");
 
@@ -481,16 +484,19 @@ function RedemptionsPerStreamCard({
     <SectionCard
       title="Redemptions per Stream"
       action={
-        data.length > 0 && (
-          <Stack direction="row" spacing={0.5}>
-            <Button size="small" onClick={() => setView("chart")} sx={toggleBtnSx(view === "chart")}>
-              Chart
-            </Button>
-            <Button size="small" onClick={() => setView("list")} sx={toggleBtnSx(view === "list")}>
-              List
-            </Button>
-          </Stack>
-        )
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+          <DateRangeFilter from={from} to={to} onFromChange={onFromChange} onToChange={onToChange} />
+          {data.length > 0 && (
+            <Stack direction="row" spacing={0.5}>
+              <Button size="small" onClick={() => setView("chart")} sx={toggleBtnSx(view === "chart")}>
+                Chart
+              </Button>
+              <Button size="small" onClick={() => setView("list")} sx={toggleBtnSx(view === "list")}>
+                List
+              </Button>
+            </Stack>
+          )}
+        </Stack>
       }
     >
       <Typography sx={{ fontSize: "12px", color: "#6a5c80", mb: 1.5 }}>
@@ -667,6 +673,8 @@ export default function Dashboard() {
   const [streamRedemptionsLoading, setStreamRedemptionsLoading] = useState(false);
   const [streamOffset,             setStreamOffset]             = useState(0);
   const [streamTotal,              setStreamTotal]              = useState(0);
+  const [streamFrom,               setStreamFrom]                = useState("");
+  const [streamTo,                 setStreamTo]                  = useState("");
 
   const [rewardPopularity,        setRewardPopularity]        = useState<RewardPopularity[]>([]);
   const [rewardPopularityLoading, setRewardPopularityLoading] = useState(false);
@@ -775,11 +783,13 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, pointsFrom, pointsTo, JSON.stringify(pointConfig)]);
 
-  // ── Analytics fetch (lazy — only once the tab is opened, refetches on paging) ──
+  // ── Analytics fetch (lazy — only once the tab is opened, refetches on paging/filtering) ──
   useEffect(() => {
     if (activeTab !== "analytics") return;
     setStreamRedemptionsLoading(true);
     const params = new URLSearchParams({ limit: String(STREAM_PAGE_SIZE), offset: String(streamOffset) });
+    if (streamFrom) params.set("from_date", streamFrom);
+    if (streamTo)   params.set("to_date",   streamTo);
     apiFetch(`/api/analytics/redemptions-per-stream?${params}`)
       .then((r) => (r.ok ? r.json() : { streams: [], total: 0 }))
       .then((res) => {
@@ -788,7 +798,7 @@ export default function Dashboard() {
       })
       .catch(console.error)
       .finally(() => setStreamRedemptionsLoading(false));
-  }, [activeTab, streamOffset]);
+  }, [activeTab, streamOffset, streamFrom, streamTo]);
 
   useEffect(() => {
     if (activeTab !== "analytics" || rewardPopularityLoaded) return;
@@ -1076,6 +1086,10 @@ export default function Dashboard() {
             total={streamTotal}
             onOlder={() => setStreamOffset((o) => o + STREAM_PAGE_SIZE)}
             onNewer={() => setStreamOffset((o) => Math.max(0, o - STREAM_PAGE_SIZE))}
+            from={streamFrom}
+            to={streamTo}
+            onFromChange={(v) => { setStreamOffset(0); setStreamFrom(v); }}
+            onToChange={(v) => { setStreamOffset(0); setStreamTo(v); }}
           />
           <RewardPopularityCard data={rewardPopularity} loading={rewardPopularityLoading} />
         </Stack>
