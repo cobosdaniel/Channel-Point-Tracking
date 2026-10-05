@@ -1379,6 +1379,8 @@ export default function Dashboard() {
                           <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
                             <input
                               type="time"
+                              id={`window-start-${day}`}
+                              name={`window-start-${day}`}
                               value={entry?.start ?? ""}
                               onChange={(e) => updateWindow(day, "start", e.target.value)}
                               style={timeInputSx}
@@ -1387,6 +1389,8 @@ export default function Dashboard() {
                             <Typography sx={{ fontSize: "12px", color: "#6a5c80" }}>→</Typography>
                             <input
                               type="time"
+                              id={`window-end-${day}`}
+                              name={`window-end-${day}`}
                               value={entry?.end ?? ""}
                               onChange={(e) => updateWindow(day, "end", e.target.value)}
                               style={timeInputSx}
