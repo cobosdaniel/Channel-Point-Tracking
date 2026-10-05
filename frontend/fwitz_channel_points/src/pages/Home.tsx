@@ -143,6 +143,8 @@ function StreamerLookupForm() {
         <div className="streamer-lookup-field">
           <input
             type="text"
+            id="streamer-lookup-input"
+            name="streamer"
             className="streamer-lookup-input"
             placeholder="Twitch username"
             aria-label="Twitch username"
