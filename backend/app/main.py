@@ -23,10 +23,13 @@ from db import (
     delete_streamer_account, delete_viewer_data,
     get_redemptions_per_stream, count_stream_sessions,
     get_redemption_counts_by_reward,
+    touch_streamer_activity, is_tracking_enabled, set_tracking_enabled,
+    disable_inactive_streamers,
 )
 import os
 import logging
 import secrets
+import threading
 import time
 
 logging.basicConfig(
@@ -697,8 +700,10 @@ async def twitch_callback(
         "login":         login,
     }
 
-    start_tracker({"twitch_user_id": twitch_user_id, "access_token": access_token,
-                   "client_id": client_id, "login": login})
+    touch_streamer_activity(twitch_user_id)
+    if is_tracking_enabled(twitch_user_id):
+        start_tracker({"twitch_user_id": twitch_user_id, "access_token": access_token,
+                       "client_id": client_id, "login": login})
     del pending_states[state]
 
     # Use a short-lived exchange token instead of setting the cookie directly
@@ -739,12 +744,73 @@ async def dashboard(request: Request, user_id: str = Depends(get_current_user)):
     user_data = get_user_tokens(user_id)
     if not user_data:
         raise HTTPException(status_code=404, detail="User data not found")
+
+    # Opening the dashboard counts as activity for the inactivity auto-disable,
+    # since a stored session can outlive the 3-month window without a fresh OAuth login.
+    touch_streamer_activity(user_id)
+    tracking_enabled = is_tracking_enabled(user_id)
+    if tracking_enabled:
+        _start_tracker_for(user_id, user_data)
+
     return {
-        "login":          user_data.get("login"),
-        "broadcaster_id": user_id,
-        "client_id":      user_data.get("client_id"),
-        "scopes":         user_data.get("scopes", []),
+        "login":            user_data.get("login"),
+        "broadcaster_id":   user_id,
+        "client_id":        user_data.get("client_id"),
+        "scopes":           user_data.get("scopes", []),
+        "tracking_enabled": tracking_enabled,
     }
+
+
+# ── Tracking toggle ────────────────────────────────────────────────────────────
+
+INACTIVITY_DAYS = 90
+INACTIVITY_CHECK_INTERVAL = 24 * 3600
+
+_inactivity_stop = threading.Event()
+
+
+def _start_tracker_for(user_id: str, user_data: dict):
+    start_tracker({
+        "twitch_user_id": user_id,
+        "access_token":   user_data["access_token"],
+        "client_id":      user_data["client_id"],
+        "login":          user_data["login"],
+    })
+
+
+class TrackingPayload(BaseModel):
+    enabled: bool
+
+
+# Sync def so FastAPI runs it in a worker thread — stop_tracker joins the
+# tracker thread and would otherwise block the event loop.
+@app.post("/api/tracking")
+@limiter.limit("20/minute")
+def set_tracking(request: Request, payload: TrackingPayload, user_id: str = Depends(get_current_user)):
+    user_data = get_user_tokens(user_id)
+    if not user_data:
+        raise HTTPException(status_code=404, detail="User data not found")
+
+    set_tracking_enabled(user_id, payload.enabled)
+    if payload.enabled:
+        _start_tracker_for(user_id, user_data)
+    else:
+        stop_tracker(user_id)
+    return {"tracking_enabled": payload.enabled}
+
+
+def _disable_inactive_trackers():
+    for uid in disable_inactive_streamers(INACTIVITY_DAYS):
+        logger.info("Tracking auto-disabled for %s after %d days inactive", uid, INACTIVITY_DAYS)
+        stop_tracker(uid)
+
+
+def _inactivity_loop():
+    while not _inactivity_stop.wait(INACTIVITY_CHECK_INTERVAL):
+        try:
+            _disable_inactive_trackers()
+        except Exception:
+            logger.exception("Inactivity check failed")
 
 
 # ── WebSocket ──────────────────────────────────────────────────────────────────
@@ -785,17 +851,21 @@ async def push_event(payload: dict, _: None = Depends(verify_internal_key)):
 
 @app.on_event("startup")
 def startup_event():
+    try:
+        disable_inactive_streamers(INACTIVITY_DAYS)
+    except Exception:
+        logger.exception("Startup inactivity check failed")
+
     user_tokens.update(load_all_user_tokens())
 
     for uid, data in user_tokens.items():
-        start_tracker({
-            "twitch_user_id": uid,
-            "access_token":   data["access_token"],
-            "client_id":      data["client_id"],
-            "login":          data["login"],
-        })
+        if data.pop("tracking_enabled", True):
+            _start_tracker_for(uid, data)
+
+    threading.Thread(target=_inactivity_loop, daemon=True).start()
 
 
 @app.on_event("shutdown")
 def shutdown_event():
+    _inactivity_stop.set()
     stop_all_trackers(timeout=10)

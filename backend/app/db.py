@@ -639,6 +639,112 @@ def _ensure_schedule_timezone_column():
 _ensure_schedule_timezone_column()
 
 
+def _ensure_tracking_columns():
+    """tracking_enabled lets a streamer pause redemption tracking from the
+    dashboard. tracking_disabled_reason is 'manual' or 'inactive' so an
+    auto-disable can be undone on next login without overriding a streamer
+    who switched it off themselves. last_active_at drives the inactivity check."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    columns = {
+        "tracking_enabled":         "TINYINT(1) NOT NULL DEFAULT 1",
+        "tracking_disabled_reason": "VARCHAR(16) DEFAULT NULL",
+        "last_active_at":           "DATETIME DEFAULT NULL",
+    }
+    for col, definition in columns.items():
+        cursor.execute("""
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME   = 'streamers'
+              AND COLUMN_NAME  = %s
+        """, (col,))
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(f"ALTER TABLE streamers ADD COLUMN {col} {definition}")
+            if col == "last_active_at":
+                # Start existing streamers' inactivity clock now rather than
+                # disabling everyone on the first check.
+                cursor.execute("UPDATE streamers SET last_active_at = UTC_TIMESTAMP()")
+            conn.commit()
+    cursor.close()
+    conn.close()
+
+_ensure_tracking_columns()
+
+
+def touch_streamer_activity(twitch_user_id: str):
+    """Record that the streamer used the app. Re-enables tracking if it was
+    only switched off for inactivity."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE streamers
+        SET last_active_at = UTC_TIMESTAMP(),
+            tracking_enabled = IF(tracking_disabled_reason = 'inactive', 1, tracking_enabled),
+            tracking_disabled_reason = IF(tracking_disabled_reason = 'inactive', NULL, tracking_disabled_reason)
+        WHERE twitch_user_id = %s
+    """, (twitch_user_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def is_tracking_enabled(twitch_user_id: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT tracking_enabled FROM streamers WHERE twitch_user_id = %s",
+        (twitch_user_id,),
+    )
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return bool(row[0]) if row else False
+
+
+def set_tracking_enabled(twitch_user_id: str, enabled: bool, reason: str | None = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE streamers
+        SET tracking_enabled = %s, tracking_disabled_reason = %s
+        WHERE twitch_user_id = %s
+    """, (1 if enabled else 0, None if enabled else (reason or "manual"), twitch_user_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def disable_inactive_streamers(days: int = 90) -> list[str]:
+    """Switch tracking off for streamers who haven't used the app in `days`
+    days. Returns the ids that were disabled so their trackers can be stopped."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        conn.start_transaction()
+        cursor.execute("""
+            SELECT twitch_user_id FROM streamers
+            WHERE tracking_enabled = 1
+              AND last_active_at < UTC_TIMESTAMP() - INTERVAL %s DAY
+            FOR UPDATE
+        """, (days,))
+        ids = [r[0] for r in cursor.fetchall()]
+        if ids:
+            placeholders = ",".join(["%s"] * len(ids))
+            cursor.execute(f"""
+                UPDATE streamers
+                SET tracking_enabled = 0, tracking_disabled_reason = 'inactive'
+                WHERE twitch_user_id IN ({placeholders})
+            """, ids)
+        conn.commit()
+        return ids
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def get_point_config(twitch_user_id: str) -> dict:
     """reward_1st/2nd/3rd/lurker/checkin store the Twitch reward *id*, not its
     title — titles can be renamed on Twitch, which would silently break matching."""
@@ -951,7 +1057,7 @@ def load_all_user_tokens():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT t.twitch_user_id, t.access_token, t.refresh_token, t.expires_in, t.scopes,
-               s.client_id, s.login
+               s.client_id, s.login, s.tracking_enabled
         FROM tokens t
         JOIN streamers s ON t.twitch_user_id = s.twitch_user_id
     """)
@@ -966,6 +1072,7 @@ def load_all_user_tokens():
             "scopes":        r["scopes"].split(",") if r["scopes"] else [],
             "client_id":     r["client_id"],
             "login":         r["login"],
+            "tracking_enabled": bool(r["tracking_enabled"]),
         }
         for r in rows
     }
