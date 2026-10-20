@@ -1057,12 +1057,12 @@ export default function Dashboard() {
   return (
     <Box
       component="main"
-      sx={{ maxWidth: "1200px", mx: "auto", px: 3, pt: 3, pb: 6 }}
+      sx={{ maxWidth: "var(--content-width)", mx: "auto", px: 3, pt: 2.5, pb: 6 }}
     >
       {/* Inactivity disclaimer */}
       <Alert
         severity="info"
-        sx={{ mb: 3, background: "rgba(139,123,255,0.1)", color: "#c5bcff", border: "1px solid rgba(139,123,255,0.3)", "& .MuiAlert-icon": { color: "#8b7bff" } }}
+        sx={{ mb: 2.5, py: 0.25, fontSize: "13px", background: "rgba(139,123,255,0.1)", color: "#c5bcff", border: "1px solid rgba(139,123,255,0.3)", "& .MuiAlert-icon": { color: "#8b7bff" } }}
       >
         Tracking pauses automatically if you don't sign in or open this dashboard on Fwitz for 90 days.
         Streaming on Twitch doesn't count as activity. Tracking turns back on when you return.
@@ -1071,10 +1071,10 @@ export default function Dashboard() {
       {/* Page header */}
       <Stack
         direction="row"
-        sx={{ mb: 3, pb: 2.5, borderBottom: "1px solid rgba(255,255,255,0.07)", alignItems: "flex-start", justifyContent: "space-between" }}
+        sx={{ mb: 2, pb: 2, borderBottom: "1px solid rgba(255,255,255,0.07)", alignItems: "center", justifyContent: "space-between" }}
       >
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: "#f4ecff", fontSize: { xs: "22px", sm: "28px" } }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: "#f4ecff", fontSize: { xs: "20px", sm: "22px" } }}>
             {dashboardData.login || "Dashboard"}
           </Typography>
           {streamStatus.live && streamStatus.started_at && (
@@ -1127,7 +1127,7 @@ export default function Dashboard() {
       {(!trackingEnabled || trackingError) && (
         <Alert
           severity={trackingError ? "error" : "warning"}
-          sx={{ mb: 3, background: "rgba(255,180,60,0.08)", color: "#ffd08f", border: "1px solid rgba(255,180,60,0.3)" }}
+          sx={{ mb: 2.5, py: 0.25, fontSize: "13px", background: "rgba(255,180,60,0.08)", color: "#ffd08f", border: "1px solid rgba(255,180,60,0.3)" }}
         >
           {trackingError || "Tracking is paused — new channel point redemptions and streams won't be recorded until you turn it back on."}
         </Alert>
