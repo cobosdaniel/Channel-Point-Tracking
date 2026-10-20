@@ -197,16 +197,17 @@ export default function App() {
             background: "rgba(255,255,255,0.08)",
             border: "1px solid rgba(255,255,255,0.12)",
             color: "#fff",
-            padding: "10px 14px",
-            borderRadius: "12px",
+            padding: "5px 10px 5px 6px",
+            borderRadius: "999px",
+            fontSize: "14px",
             cursor: "pointer",
             fontWeight: "600",
           }}
         >
           <div
             style={{
-              width: "34px",
-              height: "34px",
+              width: "28px",
+              height: "28px",
               borderRadius: "50%",
               background: "#9147ff",
               display: "flex",
@@ -227,7 +228,7 @@ export default function App() {
             className="profile-dropdown"
             style={{
               position: "absolute",
-              top: "52px",
+              top: "44px",
               right: 0,
               width: "220px",
               background: "#1f1f23",
