@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import threading
 import websocket
 import requests
 from datetime import datetime, timedelta, timezone
@@ -195,6 +196,11 @@ def run_tracker_for_streamer(streamer, shutdown_event=None):
     client_id      = streamer["client_id"]
 
     def on_message(ws, message):
+        # Drop anything still in flight once tracking has been turned off.
+        if shutdown_event and shutdown_event.is_set():
+            ws.close()
+            return
+
         data     = json.loads(message)
         msg_type = data["metadata"]["message_type"]
 
@@ -319,7 +325,24 @@ def run_tracker_for_streamer(streamer, shutdown_event=None):
                 })
 
     def on_open(ws):
+        if shutdown_event and shutdown_event.is_set():
+            ws.close()
+            return
         logger.info("WS connected for %s", broadcaster_id)
+
+    # run_forever() blocks for as long as the socket stays open, so the loop
+    # below never sees shutdown_event on its own. This watcher closes the live
+    # socket the moment shutdown is requested, which unblocks run_forever().
+    current = {"ws": None}
+
+    def close_on_shutdown():
+        shutdown_event.wait()
+        ws = current["ws"]
+        if ws:
+            ws.close()
+
+    if shutdown_event:
+        threading.Thread(target=close_on_shutdown, daemon=True).start()
 
     import time
     backoff = 5
@@ -331,6 +354,7 @@ def run_tracker_for_streamer(streamer, shutdown_event=None):
                 on_message=on_message,
                 on_open=on_open,
             )
+            current["ws"] = ws
             ws.run_forever()
             backoff = 5  # reset after a clean disconnect
         except Exception as e:

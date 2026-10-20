@@ -106,6 +106,12 @@ export default function App() {
           if (exchangeData.session_token) {
             storeSessionToken(exchangeData.session_token);
           }
+          // Tells the Dashboard to show the inactivity notice once for this login.
+          try {
+            sessionStorage.setItem("show_tracking_notice", "1");
+          } catch {
+            // sessionStorage unavailable — the dashboard banner still covers it
+          }
         }
       }
 

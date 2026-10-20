@@ -36,7 +36,10 @@ def stop_tracker(user_id, timeout=10):
     thread, shutdown_event = entry
     shutdown_event.set()
     thread.join(timeout=timeout)
-    logger.info("Stopped tracker for %s", user_id)
+    if thread.is_alive():
+        logger.warning("Tracker for %s did not stop within %ss", user_id, timeout)
+    else:
+        logger.info("Stopped tracker for %s", user_id)
 
 
 def stop_all_trackers(timeout=10):

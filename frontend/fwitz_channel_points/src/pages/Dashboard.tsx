@@ -20,6 +20,8 @@ import DialogActions from "@mui/material/DialogActions";
 import Alert from "@mui/material/Alert";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
+import Switch from "@mui/material/Switch";
+import FormControlLabel from "@mui/material/FormControlLabel";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -594,10 +596,17 @@ function RewardPopularityBars({ data }: { data: RewardPopularity[] }) {
 }
 
 function RewardPopularityCard({
-  data, loading,
-}: { data: RewardPopularity[]; loading: boolean }) {
+  data, loading, from, to, onFromChange, onToChange,
+}: {
+  data: RewardPopularity[]; loading: boolean;
+  from: string; to: string;
+  onFromChange: (v: string) => void; onToChange: (v: string) => void;
+}) {
   return (
-    <SectionCard title="Reward Popularity">
+    <SectionCard
+      title="Reward Popularity"
+      action={<DateRangeFilter from={from} to={to} onFromChange={onFromChange} onToChange={onToChange} />}
+    >
       <Typography sx={{ fontSize: "12px", color: "#6a5c80", mb: 1.5 }}>
         Ranked by redemptions — most common at the top, least likely at the bottom.
         Suggestions (e.g. lowering the price on slow rewards) are coming soon.
@@ -629,6 +638,42 @@ export default function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState("");
+
+  const [trackingEnabled, setTrackingEnabled] = useState(true);
+  const [trackingSaving,  setTrackingSaving]  = useState(false);
+  const [trackingError,   setTrackingError]   = useState("");
+
+  // Shown once right after signing in (flag set by App.tsx on the login handoff).
+  const [trackingNoticeOpen, setTrackingNoticeOpen] = useState(() => {
+    try {
+      if (sessionStorage.getItem("show_tracking_notice")) {
+        sessionStorage.removeItem("show_tracking_notice");
+        return true;
+      }
+    } catch {
+      // sessionStorage unavailable — the top-of-page banner still covers it
+    }
+    return false;
+  });
+
+  async function toggleTracking(enabled: boolean) {
+    setTrackingSaving(true);
+    setTrackingError("");
+    try {
+      const res = await apiFetch("/api/tracking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setTrackingEnabled(data.tracking_enabled);
+    } catch {
+      setTrackingError("Couldn't update tracking. Try again.");
+    } finally {
+      setTrackingSaving(false);
+    }
+  }
 
   const [redemptions,  setRedemptions]  = useState<Redemption[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
@@ -678,7 +723,8 @@ export default function Dashboard() {
 
   const [rewardPopularity,        setRewardPopularity]        = useState<RewardPopularity[]>([]);
   const [rewardPopularityLoading, setRewardPopularityLoading] = useState(false);
-  const [rewardPopularityLoaded,  setRewardPopularityLoaded]  = useState(false);
+  const [rewardPopularityFrom,    setRewardPopularityFrom]    = useState("");
+  const [rewardPopularityTo,      setRewardPopularityTo]      = useState("");
 
   // ── Initial fetch ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -698,6 +744,7 @@ export default function Dashboard() {
         const redData: Redemption[] = redRes.ok ? await redRes.json() : [];
 
         setDashboardData(dashData);
+        setTrackingEnabled(dashData.tracking_enabled ?? true);
         setRedemptions(redData.slice(0, MAX_STORED));
 
         const rewardData: Reward[] = rewardsRes.ok ? await rewardsRes.json() : [];
@@ -801,17 +848,17 @@ export default function Dashboard() {
   }, [activeTab, streamOffset, streamFrom, streamTo]);
 
   useEffect(() => {
-    if (activeTab !== "analytics" || rewardPopularityLoaded) return;
+    if (activeTab !== "analytics") return;
     setRewardPopularityLoading(true);
-    apiFetch("/api/analytics/reward-popularity")
+    const params = new URLSearchParams();
+    if (rewardPopularityFrom) params.set("from_date", rewardPopularityFrom);
+    if (rewardPopularityTo)   params.set("to_date",   rewardPopularityTo);
+    apiFetch(`/api/analytics/reward-popularity?${params}`)
       .then((r) => (r.ok ? r.json() : []))
       .then(setRewardPopularity)
       .catch(console.error)
-      .finally(() => {
-        setRewardPopularityLoading(false);
-        setRewardPopularityLoaded(true);
-      });
-  }, [activeTab, rewardPopularityLoaded]);
+      .finally(() => setRewardPopularityLoading(false));
+  }, [activeTab, rewardPopularityFrom, rewardPopularityTo]);
 
   // ── WebSocket ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1012,6 +1059,15 @@ export default function Dashboard() {
       component="main"
       sx={{ maxWidth: "1200px", mx: "auto", px: 3, pt: 3, pb: 6 }}
     >
+      {/* Inactivity disclaimer */}
+      <Alert
+        severity="info"
+        sx={{ mb: 3, background: "rgba(139,123,255,0.1)", color: "#c5bcff", border: "1px solid rgba(139,123,255,0.3)", "& .MuiAlert-icon": { color: "#8b7bff" } }}
+      >
+        Tracking pauses automatically if you don't sign in or open this dashboard on Fwitz for 90 days.
+        Streaming on Twitch doesn't count as activity. Tracking turns back on when you return.
+      </Alert>
+
       {/* Page header */}
       <Stack
         direction="row"
@@ -1028,25 +1084,54 @@ export default function Dashboard() {
             </Typography>
           )}
         </Box>
-        {streamStatus.live && (
-          <Chip
-            label="LIVE"
-            size="small"
-            icon={
-              <span style={{
-                width: 7, height: 7, borderRadius: "50%",
-                background: "#fff", animation: "pulse 1.2s infinite",
-                marginLeft: 8,
-              }} />
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+          <FormControlLabel
+            labelPlacement="start"
+            control={
+              <Switch
+                id="tracking-enabled"
+                name="tracking-enabled"
+                checked={trackingEnabled}
+                disabled={trackingSaving}
+                onChange={(e) => toggleTracking(e.target.checked)}
+                sx={{
+                  "& .MuiSwitch-switchBase.Mui-checked": { color: "#8b7bff" },
+                  "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#8b7bff" },
+                }}
+              />
             }
-            sx={{
-              background: "#ff4040", color: "#fff", fontWeight: 700,
-              fontSize: "12px", height: 26,
-              "& .MuiChip-icon": { color: "#fff" },
-            }}
+            label={trackingEnabled ? "Tracking on" : "Tracking off"}
+            sx={{ m: 0, "& .MuiFormControlLabel-label": { fontSize: "13px", color: "#a090c0" } }}
           />
-        )}
+          {streamStatus.live && (
+            <Chip
+              label="LIVE"
+              size="small"
+              icon={
+                <span style={{
+                  width: 7, height: 7, borderRadius: "50%",
+                  background: "#fff", animation: "pulse 1.2s infinite",
+                  marginLeft: 8,
+                }} />
+              }
+              sx={{
+                background: "#ff4040", color: "#fff", fontWeight: 700,
+                fontSize: "12px", height: 26,
+                "& .MuiChip-icon": { color: "#fff" },
+              }}
+            />
+          )}
+        </Stack>
       </Stack>
+
+      {(!trackingEnabled || trackingError) && (
+        <Alert
+          severity={trackingError ? "error" : "warning"}
+          sx={{ mb: 3, background: "rgba(255,180,60,0.08)", color: "#ffd08f", border: "1px solid rgba(255,180,60,0.3)" }}
+        >
+          {trackingError || "Tracking is paused — new channel point redemptions and streams won't be recorded until you turn it back on."}
+        </Alert>
+      )}
 
       {/* Tab switcher */}
       <Tabs
@@ -1091,7 +1176,14 @@ export default function Dashboard() {
             onFromChange={(v) => { setStreamOffset(0); setStreamFrom(v); }}
             onToChange={(v) => { setStreamOffset(0); setStreamTo(v); }}
           />
-          <RewardPopularityCard data={rewardPopularity} loading={rewardPopularityLoading} />
+          <RewardPopularityCard
+            data={rewardPopularity}
+            loading={rewardPopularityLoading}
+            from={rewardPopularityFrom}
+            to={rewardPopularityTo}
+            onFromChange={setRewardPopularityFrom}
+            onToChange={setRewardPopularityTo}
+          />
         </Stack>
       ) : (
       <Stack spacing={2}>
@@ -1520,6 +1612,43 @@ export default function Dashboard() {
             sx={{ background: "rgba(139,123,255,0.3)", color: "#c5bcff", border: "1px solid #8b7bff", boxShadow: "none", "&:hover": { background: "rgba(139,123,255,0.45)", boxShadow: "none" } }}
           >
             {pointConfigSaving ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Post-login inactivity notice */}
+      <Dialog
+        open={trackingNoticeOpen}
+        onClose={() => setTrackingNoticeOpen(false)}
+        slotProps={{ paper: { sx: dialogPaperSx } }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: "#f4ecff", fontWeight: 700, pb: 1 }}>
+          Keep tracking active
+        </DialogTitle>
+        <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography sx={{ mb: 1.5, fontSize: "13px", color: "#a090c0", lineHeight: 1.6 }}>
+            Fwitz tracks your channel point redemptions and streams automatically while tracking is on.
+          </Typography>
+          <Typography sx={{ mb: 1.5, fontSize: "13px", color: "#a090c0", lineHeight: 1.6 }}>
+            If you don't sign in or open this dashboard on Fwitz for <strong>90 days</strong>, tracking pauses
+            automatically. Streaming on Twitch doesn't count as activity. Only visiting Fwitz does.
+          </Typography>
+          <Typography sx={{ fontSize: "13px", color: "#a090c0", lineHeight: 1.6 }}>
+            Coming back turns tracking on again. You can also turn it on or off yourself with the
+            switch at the top of the dashboard.
+          </Typography>
+        </DialogContent>
+        <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button
+            onClick={() => setTrackingNoticeOpen(false)}
+            variant="contained"
+            sx={{ background: "rgba(139,123,255,0.3)", color: "#c5bcff", border: "1px solid #8b7bff", boxShadow: "none", "&:hover": { background: "rgba(139,123,255,0.45)", boxShadow: "none" } }}
+          >
+            Got it
           </Button>
         </DialogActions>
       </Dialog>

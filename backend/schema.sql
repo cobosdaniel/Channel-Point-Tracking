@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS streamers (
     twitch_user_id VARCHAR(64)  NOT NULL PRIMARY KEY,
     login          VARCHAR(255) NOT NULL,
     client_id      VARCHAR(255) NOT NULL,
+    tracking_enabled         TINYINT(1)  NOT NULL DEFAULT 1,
+    tracking_disabled_reason VARCHAR(16) DEFAULT NULL,
+    last_active_at           DATETIME    DEFAULT NULL,
     UNIQUE KEY uq_streamers_login (login)
 );
 
